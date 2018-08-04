@@ -1,0 +1,12 @@
+#!/usr/bin/env php
+<?php
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+use Symfony\Component\Console\Application;
+use TagsServer\ServerCommand;
+
+$application = new Application();
+$command = new ServerCommand();
+$application->add($command);
+$application->run();

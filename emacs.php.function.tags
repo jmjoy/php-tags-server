@@ -1,0 +1,2 @@
+{php}/[ \t]*[^\(function\)]\(?:final\|abstract\)*[ \t\n]*\(?:public\|protected\|private\)*[ \t\n]*\(?:static\)*[ \t\n]*\(?:function\)[ \t\n]*\([a-z_0-9]+[^\(]\)/i
+
