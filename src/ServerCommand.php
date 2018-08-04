@@ -12,6 +12,8 @@ use Swoole\Coroutine as Co;
 
 class ServerCommand extends Command {
 
+    protected const NOTIFY_MASK = IN_MODIFY | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE;
+
     protected $dir;
 
     protected $output;
@@ -21,6 +23,10 @@ class ServerCommand extends Command {
     protected $fileQueue;
 
     protected $outputLock;
+
+    protected $notify;
+
+    protected $notifyLock;
 
     protected function configure() {
         $this->setName('server:run')
@@ -39,8 +45,8 @@ class ServerCommand extends Command {
         $http = new \swoole_http_server($host, $port);
         $http->on('workerStart', function () {
             $this->handleFile();
-            $this->pushAllFiles();
-            // $this->notifyFiles();
+            // $this->pushAllFiles();
+            $this->notifyFiles();
         });
         $http->on('request', function ($request, $response) {
             $response->end("<h1>Hello Swoole. #".rand(1000, 9999)."</h1>");
@@ -56,11 +62,16 @@ class ServerCommand extends Command {
         if (!is_dir($this->dir)) {
             throw new InvalidArgumentException('<dir> isn\'t a directory.');
         }
+        $this->dir = realpath($this->dir);
         chdir($this->dir);
 
         $this->tagTable = new \swoole_table(1024 * 1024);
         $this->fileQueue = new Co\Channel(1024 * 1024);
         $this->outputLock = new \swoole_lock(\SWOOLE_MUTEX);
+        $this->notifyLock = new \swoole_lock(\SWOOLE_MUTEX);
+
+        $this->notify = inotify_init();
+        inotify_add_watch($this->notify, $this->dir, static::NOTIFY_MASK);
     }
 
     protected function pushAllFiles() {
@@ -70,7 +81,7 @@ class ServerCommand extends Command {
             $iterator = new \RegexIterator($iterator, '/^.+\.php$/i', \RegexIterator::GET_MATCH);
             foreach ($iterator as $match) {
                 if (is_file($match[0])) {
-                    $file = realpath($match[0]);
+                    $file = $this->expandFilePath($match[0]);
                     $this->fileQueue->push(['ADD', $file]);
                 }
             }
@@ -78,19 +89,46 @@ class ServerCommand extends Command {
     }
 
     protected function notifyFiles() {
-        //创建一个inotify句柄
-        $notify = inotify_init();
+        Co::create(function() {
+            while (true) {
+                $this->notifyLock->lock();
+                $events = inotify_read($this->notify);
+                $this->notifyLock->unlock();
 
-        //监听文件，仅监听修改操作，如果想要监听所有事件可以使用IN_ALL_EVENTS
-        // inotify_add_watch($notify, $this->dir, IN_MODIFY | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE);
-        inotify_add_watch($notify, $this->dir, IN_ALL_EVENTS);
+                if ($events) {
+                    foreach ($events as $event) {
+                        $this->writeln("inotify Event :".var_export($event, 1)."\n");
+                        if (empty($event['mask']) || empty($event['name'])) {
+                            continue;
+                        }
 
-        swoole_event_add($notify, function($notify) {
-            $events = inotify_read($notify);
-            if ($events) {
-                foreach ($events as $event) {
-                    $this->fileQueue->push(['ADD', 'TEST']);
-                    $this->writeln("inotify Event :".var_export($event, 1)."\n");
+                        $op = null;
+                        switch ($event['mask']) {
+                            case IN_CREATE | IN_ISDIR:
+                            case IN_MOVED_TO | IN_ISDIR:
+                                $op = "MKDIR";
+                                break;
+                            case IN_DELETE | IN_ISDIR:
+                            case IN_MOVED_FROM | IN_ISDIR:
+                                $op = "RMDIR";
+                                break;
+                            case IN_MODIFY:
+                                $op = "MOD";
+                                break;
+                            case IN_MOVED_TO:
+                            case IN_CREATE:
+                                $op = "ADD";
+                                break;
+                            case IN_MOVED_FROM:
+                            case IN_DELETE:
+                                $op = "DEL";
+                                break;
+                            default:
+                                continue;
+                        }
+
+                        $this->fileQueue->push([$op, $this->expandFilePath($event['name'])]);
+                    }
                 }
             }
         });
@@ -100,7 +138,19 @@ class ServerCommand extends Command {
         Co::create(function() {
             while (true) {
                 list($op, $file) = $this->fileQueue->pop();
-                $this->writeln($op . " " . $file);
+                if ($op && $file) {
+                    switch ($op) {
+                        case 'MKDIR':
+                            inotify_add_watch($this->notify, $file, static::NOTIFY_MASK);
+                            break;
+                        case 'RMDIR':
+                            // TODO set descriptioner
+                            inotify_rm_watch($this->notify, $file);
+                            break;
+                        default:
+                    }
+                    $this->writeln($op . " " . $file);
+                }
             }
         });
     }
@@ -111,5 +161,8 @@ class ServerCommand extends Command {
         $this->outputLock->unlock();
     }
 
-}
+    protected function expandFilePath($filename) {
+        return $this->dir . DIRECTORY_SEPARATOR . $filename;
+    }
 
+}
