@@ -1,0 +1,21 @@
+{
+    "name": "jmjoy/php-tags-server",
+    "description": "A web service can find definitions for your PHP code. Edit",
+    "type": "project",
+    "authors": [
+        {
+            "name": "jmjoy",
+            "email": "jmjoy@jmjoy.top"
+        }
+    ],
+    "require": {
+        "php": "^7.1",
+        "ext-swoole": "^4.0",
+        "ext-inotify": "^2.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^7.2"
+    },
+    "license": "MIT",
+    "minimum-stability": "dev"
+}
