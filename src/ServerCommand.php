@@ -28,6 +28,8 @@ class ServerCommand extends Command {
 
     protected $notifyLock;
 
+    protected $notifyTable;
+
     protected function configure() {
         $this->setName('server:run')
             ->setDescription('Run the tags server.')
@@ -164,5 +166,9 @@ class ServerCommand extends Command {
     protected function expandFilePath($filename) {
         return $this->dir . DIRECTORY_SEPARATOR . $filename;
     }
+
+    // protected function inotifyAddWatch($dir) {
+    //     $this->notifyTable->push($dir, $);
+    // }
 
 }
