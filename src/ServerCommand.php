@@ -24,6 +24,8 @@ class ServerCommand extends Command {
 
     protected $notify;
 
+    protected $parser;
+
     protected function configure() {
         $this->setName('server:run')
             ->setDescription('Run the tags server.')
@@ -48,6 +50,8 @@ class ServerCommand extends Command {
 
         $this->notify = new Notify();
         $this->notify->addWatch($this->dir);
+
+        $this->parser = new Parser();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output) {
@@ -58,7 +62,7 @@ class ServerCommand extends Command {
         $http = new \Swoole\Http\Server($host, $port);
         $http->on('workerStart', function () {
             $this->handleFile();
-            $this->pushAllFiles();
+            // $this->pushAllFiles();
             $this->notifyFiles();
         });
         $http->on('request', function ($request, $response) {
@@ -130,11 +134,19 @@ class ServerCommand extends Command {
 
     protected function handleFile() {
         Co::create(function() {
+            static $lastOp;
+            static $lastFile;
+
             while (true) {
                 list($op, $file) = $this->fileQueue->pop();
                 if (!$op || !$file) {
                     continue;
                 }
+                if ($op == $lastOp && $file == $lastFile) {
+                    continue;
+                }
+                $lastOp = $op;
+                $lastFile = $file;
 
                 switch ($op) {
                     case 'MKDIR':
@@ -144,6 +156,16 @@ class ServerCommand extends Command {
                         $this->notify->rmWatch($file);
                         break;
                     default:
+                        if (strpos($file, '.php') !== strlen($file) - 4) {
+                            continue 2;
+                        }
+                        switch ($op) {
+                            case "ADD":
+                            case "MOD":
+                                $this->parser->addFile($file);
+                                break;
+                            default:
+                        }
                 }
 
                 $this->writeln($op . " " . $file);
@@ -162,3 +184,4 @@ class ServerCommand extends Command {
     }
 
 }
+

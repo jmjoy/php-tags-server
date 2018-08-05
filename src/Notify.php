@@ -25,8 +25,10 @@ class Notify {
     }
 
     public function addWatch($dir, $mask = self::MASK) {
-        $id = inotify_add_watch($this->notify, $dir, $mask);
-        $this->watchTable->set($dir, ['id' => $id]);
+        $this->walkRecursiveDirs($dir, function($dir) use ($mask) {
+            $id = inotify_add_watch($this->notify, $dir, $mask);
+            $this->watchTable->set($dir, ['id' => $id]);
+        });
     }
 
     public function rmWatch($dir, $mask = self::MASK) {
@@ -47,4 +49,23 @@ class Notify {
         return $events;
     }
 
+    protected function walkRecursiveDirs($dir, $handleDir) {
+        if (!is_dir($dir)) {
+            return;
+        }
+        $handleDir($dir);
+        $files = scandir($dir);
+        foreach ($files as $file) {
+            if ($file == '.' || $file == '..') {
+                continue;
+            }
+            $filepath = $dir . DIRECTORY_SEPARATOR . $file;
+            if (is_dir($filepath)) {
+                $this->walkRecursiveDirs($filepath, $handleDir);
+            }
+        }
+    }
+
 }
+
+
