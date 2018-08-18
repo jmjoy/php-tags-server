@@ -15,6 +15,8 @@ class Notify {
 
     protected $watchTable;
 
+    protected $watchReverseTable;
+
     public function __construct() {
         $this->notify = inotify_init();
         $this->readLock = new Lock(SWOOLE_MUTEX);
@@ -22,12 +24,17 @@ class Notify {
         $this->watchTable = new Table(1024 * 1024);
         $this->watchTable->column('id', Table::TYPE_INT, 8);
         $this->watchTable->create();
+
+        $this->watchReverseTable = new Table(1024 * 1024);
+        $this->watchReverseTable->column('dir', Table::TYPE_STRING, 256);
+        $this->watchReverseTable->create();
     }
 
     public function addWatch($dir, $mask = self::MASK) {
         $this->walkRecursiveDirs($dir, function($dir) use ($mask) {
             $id = inotify_add_watch($this->notify, $dir, $mask);
             $this->watchTable->set($dir, ['id' => $id]);
+            $this->watchReverseTable->set($id, ['dir' => $dir]);
         });
     }
 
@@ -37,6 +44,7 @@ class Notify {
             throw new NotifyWatchNotFoundException();
         }
         $this->watchTable->del($dir);
+        $this->watchReverseTable->del($id);
 
         // TODO Unkonw why not work.
         // inotify_rm_watch($this->notify, $id);
@@ -46,6 +54,13 @@ class Notify {
         $this->readLock->lock();
         $events = inotify_read($this->notify);
         $this->readLock->unlock();
+
+        $events = array_map(function($event) {
+            $dir = $this->watchReverseTable->get($event['wd'], 'dir');
+            $event['name'] = $dir . DIRECTORY_SEPARATOR . $event['name'];
+            return $event;
+        }, $events);
+
         return $events;
     }
 
@@ -67,5 +82,3 @@ class Notify {
     }
 
 }
-
-

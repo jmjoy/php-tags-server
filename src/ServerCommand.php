@@ -125,8 +125,8 @@ class ServerCommand extends Command {
                         default:
                             continue;
                     }
-
-                    $this->fileQueue->push([$op, $this->expandFilePath($event['name'])]);
+                    $this->writeln(var_export($event));
+                    $this->fileQueue->push([$op, $event['name']]);
                 }
             }
         });
@@ -162,7 +162,8 @@ class ServerCommand extends Command {
                         switch ($op) {
                             case "ADD":
                             case "MOD":
-                                $this->parser->addFile($file);
+                                $tokens = $this->parser->addFile($file);
+                                $this->writeln(var_export($tokens));
                                 break;
                             default:
                         }

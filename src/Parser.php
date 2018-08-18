@@ -18,11 +18,17 @@ class Parser {
 
     public function addFile($file) {
         $tokens = token_get_all(file_get_contents($file));
-        var_dump($tokens);
+        $tokens = array_map(function($token) {
+            if (is_int($token[0])) {
+                $token[] = token_name($token[0]);
+            }
+            return $token;
+        }, $tokens);
+        return $tokens;
     }
 
     public function rmFile() {
-        
     }
 
 }
+
